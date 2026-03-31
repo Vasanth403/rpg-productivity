@@ -1011,7 +1011,7 @@ function Analytics({ dailyLog, shieldedDays, onWipe, stats, completedToday, tota
               {week.map((day) => (
                 <div key={day.key} className="heatmap-cell"
                   style={{ background: cellColor(day.quests, day.shielded), boxShadow: cellGlow(day.quests, day.shielded) }}
-                  onMouseEnter={(e) => setTooltip({ day, x: e.clientX, y: e.clientY })}
+                  onMouseMove={(e) => setTooltip({ day, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setTooltip(null)}
                 />
               ))}
@@ -1019,9 +1019,14 @@ function Analytics({ dailyLog, shieldedDays, onWipe, stats, completedToday, tota
           ))}
         </div>
         {tooltip && (
-          <div className="heatmap-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 48 }}>
-            <strong>{tooltip.day.label}</strong><br />
-            {tooltip.day.shielded ? "🛡️ Shield used" : `${tooltip.day.quests} quest${tooltip.day.quests !== 1 ? "s" : ""} · ${tooltip.day.xp} XP`}
+          <div className="heatmap-tooltip" style={{
+            left: tooltip.x + 14,
+            top: tooltip.y > window.innerHeight - 80 ? tooltip.y - 60 : tooltip.y + 16,
+          }}>
+            <span className="ht-date">{tooltip.day.label}</span>
+            <span className="ht-val">
+              {tooltip.day.shielded ? "🛡️ Shield used" : tooltip.day.quests === 0 ? "No activity" : `${tooltip.day.quests} quest${tooltip.day.quests !== 1 ? "s" : ""} · ${tooltip.day.xp} XP`}
+            </span>
           </div>
         )}
         <div className="hl-row">
