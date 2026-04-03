@@ -287,8 +287,27 @@ export default function App() {
       if (!profile?.data) return;
       skipNextSync.current = true;
       const loaded = parseData(profile.data);
-      setData(loaded);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded));
+      setData((prev) => {
+        // Merge cloud data with local state, preserving whichever is more up-to-date.
+        // This prevents cloud data from overwriting local completions that haven't synced yet
+        // (e.g. user closed app within the 1500ms sync debounce window).
+        if (prev.dayKey && loaded.dayKey) {
+          if (prev.dayKey > loaded.dayKey) {
+            // Local has already advanced past the cloud state (reset ran, or more recent activity).
+            // Keep local's done/dayKey/bonusGiven so we don't re-apply stale completions or trigger false penalty.
+            return { ...loaded, done: prev.done, dayKey: prev.dayKey, bonusGiven: prev.bonusGiven };
+          }
+          if (prev.dayKey === loaded.dayKey) {
+            // Same day — keep whichever has more quest completions (more up-to-date).
+            const prevCount  = Object.keys(prev.done).length;
+            const loadedCount = Object.keys(loaded.done).length;
+            if (prevCount > loadedCount) {
+              return { ...loaded, done: prev.done, bonusGiven: prev.bonusGiven };
+            }
+          }
+        }
+        return loaded;
+      });
     } finally {
       setCloudReady(true);
     }
@@ -347,7 +366,12 @@ export default function App() {
         }
 
         const weekChanged = p.weekKey !== week;
-        const missedQuests = (p.quests || []).filter((q) => q.repeat === "daily" && !p.done[q.id]);
+        // If dailyLog records all quests were completed yesterday, trust that over done state
+        // (done can be stale if cloud data won a race against local completions)
+        const allDoneYesterday = !!(p.dailyLog?.[p.dayKey]?.allDone);
+        const missedQuests = allDoneYesterday
+          ? []
+          : (p.quests || []).filter((q) => q.repeat === "daily" && !p.done[q.id]);
 
         // Penalty: -5 per missed quest per stat
         const penaltyStats = { ...p.stats };
@@ -521,6 +545,7 @@ export default function App() {
           xp:         pd.xp + xpGain + bonus,
           quests:     pd.quests + 1,
           byCategory: { ...pd.byCategory, [q.category]: (pd.byCategory?.[q.category] || 0) + xpGain },
+          ...(allDone ? { allDone: true } : {}),
         },
       };
       return { ...prev, level, xp, stats, done: newDone, history, dailyLog, bonusGiven: allDone ? true : prev.bonusGiven };
