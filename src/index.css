@@ -1508,6 +1508,10 @@ body {
   line-height: 1.5;
 }
 .boss-btn { width: 100%; justify-content: center; }
+.boss-lock-row { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
+.boss-lock-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
+.boss-lock-fill { height: 100%; background: rgba(239,68,68,0.5); border-radius: 99px; transition: width 0.4s ease; }
+.boss-lock-label { font-size: 0.72rem; color: rgba(148,163,184,0.5); font-family: "Orbitron", monospace; letter-spacing: 0.06em; }
 
 /* ── Drag handle ─────────────────────────────────────────────────────────────── */
 .drag-handle {

@@ -821,7 +821,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <WeeklyBossCard boss={getWeeklyBoss(data.weekKey)} defeated={data.weeklyBossDefeated === data.weekKey} onDefeat={completeBoss} />
+                <WeeklyBossCard boss={getWeeklyBoss(data.weekKey)} defeated={data.weeklyBossDefeated === data.weekKey} weeklyQuests={getWeeklyQuestCount(data.dailyLog, data.weekKey)} onDefeat={completeBoss} />
 
                 {data.quests.length === 0 ? (
                   <div className="empty-board">
@@ -924,6 +924,17 @@ function SetupModal({ onComplete }) {
 }
 
 // ─── Analytics helpers ────────────────────────────────────────────────────────
+function getWeeklyQuestCount(dailyLog, weekKey) {
+  if (!weekKey) return 0;
+  let count = 0;
+  const start = new Date(weekKey + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  for (const d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    count += dailyLog[d.toLocaleDateString("en-CA")]?.quests || 0;
+  }
+  return count;
+}
+
 function calcStreak(dailyLog, shieldedDays = []) {
   const today = new Date(); today.setHours(0,0,0,0);
   const shields = new Set(shieldedDays || []);
@@ -1335,7 +1346,10 @@ function QuestModal({ mode, initialQuest, userLevel, onSave, onClose }) {
 }
 
 // ─── WeeklyBossCard ───────────────────────────────────────────────────────────
-function WeeklyBossCard({ boss, defeated, onDefeat }) {
+const BOSS_THRESHOLD = 25;
+function WeeklyBossCard({ boss, defeated, weeklyQuests, onDefeat }) {
+  const unlocked = weeklyQuests >= BOSS_THRESHOLD;
+  const progress = Math.min(100, Math.round((weeklyQuests / BOSS_THRESHOLD) * 100));
   return (
     <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`weekly-boss-card ${defeated ? "boss-defeated" : ""}`}>
       <div className="boss-header">
@@ -1349,8 +1363,14 @@ function WeeklyBossCard({ boss, defeated, onDefeat }) {
         }
       </div>
       <p className="boss-desc">{boss.desc}</p>
-      <button className={defeated ? "btn-done boss-btn" : "btn-complete bc-red boss-btn"} disabled={defeated} onClick={onDefeat}>
-        {defeated ? "Defeated" : <><span>Challenge Boss</span><ChevronRight size={14} /></>}
+      {!defeated && !unlocked && (
+        <div className="boss-lock-row">
+          <div className="boss-lock-track"><div className="boss-lock-fill" style={{ width: `${progress}%` }} /></div>
+          <span className="boss-lock-label">{weeklyQuests} / {BOSS_THRESHOLD} quests to unlock</span>
+        </div>
+      )}
+      <button className={defeated ? "btn-done boss-btn" : "btn-complete bc-red boss-btn"} disabled={defeated || !unlocked} onClick={onDefeat}>
+        {defeated ? "Defeated" : !unlocked ? <><Lock size={13} /><span>Locked</span></> : <><span>Challenge Boss</span><ChevronRight size={14} /></>}
       </button>
     </motion.div>
   );
