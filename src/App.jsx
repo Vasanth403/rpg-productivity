@@ -23,6 +23,23 @@ export const CATEGORIES = {
 const CAT_ICONS = { COMBAT: Dumbbell, KNOWLEDGE: BookOpen, DISCIPLINE: Shield, VITALITY: Zap, CREATION: Palette };
 const CAT_ORDER = ["COMBAT", "KNOWLEDGE", "DISCIPLINE", "VITALITY", "CREATION"];
 
+// ─── Weekly Boss ──────────────────────────────────────────────────────────────
+const WEEKLY_BOSSES = [
+  { name: "The Iron Colossus",  desc: "A towering construct of pure discipline. Push beyond your limits this week." },
+  { name: "Shadow Drake",       desc: "A beast born from accumulated laziness. Face it before the week ends."       },
+  { name: "The Forgotten King", desc: "An ancient ruler who thrived on inconsistency. Dethrone him."                },
+  { name: "Void Sentinel",      desc: "Guardian of stagnation. Prove your growth has no ceiling."                   },
+  { name: "Abyssal Tyrant",     desc: "Born from your weakest moments. Conquer yourself this week."                 },
+  { name: "The Hollow Knight",  desc: "An empty shell of potential. Fill it with decisive action."                  },
+  { name: "Storm Warden",       desc: "Commands the chaos of the week. Stand firm and claim your XP."               },
+];
+function getWeeklyBoss(weekKey) {
+  if (!weekKey) return WEEKLY_BOSSES[0];
+  const d = new Date(weekKey + "T00:00:00");
+  const weekNum = Math.floor(d.getTime() / (7 * 24 * 60 * 60 * 1000));
+  return WEEKLY_BOSSES[Math.abs(weekNum) % WEEKLY_BOSSES.length];
+}
+
 // ─── Difficulty Tiers ─────────────────────────────────────────────────────────
 export const TIERS = {
   E: { xp: 20,  color: "slate",  hex: "#64748b", unlockLevel: 1  },
@@ -200,6 +217,7 @@ function getDefaultState() {
     bonusGiven: false,
     notifEnabled: false,
     notifTime: "08:00",
+    weeklyBossDefeated: "",
   };
 }
 
@@ -229,6 +247,7 @@ function parseData(d) {
     bonusGiven:          d.bonusGiven ?? false,
     notifEnabled:        d.notifEnabled ?? false,
     notifTime:           d.notifTime ?? "08:00",
+    weeklyBossDefeated:  d.weeklyBossDefeated ?? "",
   };
 }
 
@@ -517,10 +536,12 @@ export default function App() {
   }
 
   function completeQuest(q) {
+    const streak = calcStreak(data.dailyLog, data.shieldedDays);
+    const multi  = streak >= 30 ? 2.0 : streak >= 14 ? 1.5 : streak >= 7 ? 1.25 : 1.0;
     setData((prev) => {
       if (prev.done[q.id]) return prev;
       const cat    = CATEGORIES[q.category];
-      const xpGain = TIERS[q.tier || "E"].xp;
+      const xpGain = Math.round(TIERS[q.tier || "E"].xp * multi);
       const newDone = { ...prev.done, [q.id]: true };
 
       // Bonus XP if all daily quests now done
@@ -551,7 +572,8 @@ export default function App() {
       return { ...prev, level, xp, stats, done: newDone, history, dailyLog, bonusGiven: allDone ? true : prev.bonusGiven };
     });
     playSound("complete");
-    notify(`Quest cleared: ${q.name}`);
+    const bonusLabel = multi >= 2.0 ? " ×2 streak bonus!" : multi >= 1.5 ? " ×1.5 streak bonus!" : multi >= 1.25 ? " ×1.25 streak bonus!" : "";
+    notify(`Quest cleared: ${q.name}${bonusLabel}`);
     if (q.repeat === "once") {
       setTimeout(() => {
         setData((prev) => ({
@@ -579,6 +601,25 @@ export default function App() {
       quests: prev.quests.filter((q) => q.id !== id),
       done:   Object.fromEntries(Object.entries(prev.done).filter(([k]) => k !== id)),
     }));
+  }
+
+  function completeBoss() {
+    const boss = getWeeklyBoss(data.weekKey);
+    setData((prev) => {
+      if (prev.weeklyBossDefeated === prev.weekKey) return prev;
+      let level = prev.level, xp = prev.xp + 500, needNow = xpNeed(level);
+      while (xp >= needNow) { xp -= needNow; level++; needNow = xpNeed(level); }
+      const todayKey = getTodayKey(prev.timezone || "UTC");
+      const pd = prev.dailyLog?.[todayKey] || { xp: 0, quests: 0, byCategory: {} };
+      const history = [
+        { t: new Date().toISOString(), name: boss.name, xp: 500, stat: "ALL", category: "COMBAT", tier: "S" },
+        ...prev.history,
+      ].slice(0, 50);
+      const dailyLog = { ...prev.dailyLog, [todayKey]: { ...pd, xp: pd.xp + 500, quests: pd.quests + 1 } };
+      return { ...prev, level, xp, weeklyBossDefeated: prev.weekKey, history, dailyLog };
+    });
+    playSound("bonus");
+    notify(`⚔️ Weekly Boss defeated! +500 EXP!`);
   }
 
   function renameHunter() {
@@ -780,6 +821,8 @@ export default function App() {
                   </button>
                 </div>
 
+                <WeeklyBossCard boss={getWeeklyBoss(data.weekKey)} defeated={data.weeklyBossDefeated === data.weekKey} onDefeat={completeBoss} />
+
                 {data.quests.length === 0 ? (
                   <div className="empty-board">
                     <p className="empty-title">No quests registered</p>
@@ -803,12 +846,12 @@ export default function App() {
                 )}
 
                 <div className="log-panel">
-                  <p className="eyebrow">COMBAT LOG</p>
+                  <p className="eyebrow">COMBAT LOG <span style={{ opacity: 0.4, fontSize: "0.7em", fontWeight: "normal", textTransform: "none" }}>· last 10 quests</span></p>
                   <div className="log-list">
                     {data.history.length === 0 ? (
                       <p className="log-empty">No activity recorded yet.</p>
                     ) : (
-                      data.history.map((h, i) => (
+                      data.history.slice(0, 10).map((h, i) => (
                         <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }} className="log-row">
                           <span className={`log-dot ld-${CATEGORIES[h.category]?.color || "blue"}`} />
                           <span className="log-name">{h.name}</span>
@@ -816,7 +859,15 @@ export default function App() {
                             +{h.xp} EXP · {h.stat}
                             {h.tier && <span className="log-tier"> [{h.tier}]</span>}
                           </span>
-                          <span className="log-time">{new Date(h.t).toLocaleTimeString()}</span>
+                          <span className="log-time">{(() => {
+                            const d = new Date(h.t);
+                            const today = new Date();
+                            const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+                            const sameDay = (a, b) => a.toLocaleDateString() === b.toLocaleDateString();
+                            if (sameDay(d, today)) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                            if (sameDay(d, yesterday)) return `Yesterday ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                            return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                          })()}</span>
                         </motion.div>
                       ))
                     )}
@@ -1164,7 +1215,7 @@ function QuestCard({ quest, done, onComplete, onEdit, onDelete, onDragStart, onD
   const isWeekly = quest.repeat === "weekly";
 
   return (
-    <motion.div draggable onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
+    <motion.div layout layoutId={quest.id} draggable onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
       whileHover={!done ? { y: -5 } : {}} transition={{ type: "spring", stiffness: 260, damping: 18 }}
       className={`quest-card qc-${cat.color} ${done ? "qc-done" : ""} ${isWeekly ? "qc-weekly" : ""}`}
     >
@@ -1279,6 +1330,28 @@ function QuestModal({ mode, initialQuest, userLevel, onSave, onClose }) {
           <button type="submit" className="btn-submit">{mode === "edit" ? "Save Changes" : "Register Quest"}</button>
         </form>
       </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── WeeklyBossCard ───────────────────────────────────────────────────────────
+function WeeklyBossCard({ boss, defeated, onDefeat }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`weekly-boss-card ${defeated ? "boss-defeated" : ""}`}>
+      <div className="boss-header">
+        <div className="boss-header-left">
+          <span className="boss-eyebrow">WEEKLY BOSS</span>
+          <p className="boss-name">{boss.name}</p>
+        </div>
+        {defeated
+          ? <span className="boss-cleared-stamp"><Check size={11} /> DEFEATED</span>
+          : <span className="boss-xp-badge">+500 EXP</span>
+        }
+      </div>
+      <p className="boss-desc">{boss.desc}</p>
+      <button className={defeated ? "btn-done boss-btn" : "btn-complete bc-red boss-btn"} disabled={defeated} onClick={onDefeat}>
+        {defeated ? "Defeated" : <><span>Challenge Boss</span><ChevronRight size={14} /></>}
+      </button>
     </motion.div>
   );
 }
